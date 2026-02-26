@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
-import sklearn
-st.write("Scikit-learn version:", sklearn.__version__)
+
 # ================= PAGE CONFIG =================
 st.set_page_config(
     page_title="SmartBill",
