@@ -144,12 +144,18 @@ if st.sidebar.button("Logout"):
 # ================= LOAD MODELS =================
 @st.cache_resource
 def load_models():
-    model_voltage = joblib.load(VOLTAGE_MODEL_PATH)
-    model_bill = joblib.load(BILL_MODEL_PATH)
-    return model_voltage, model_bill
+    try:
+        model_voltage = joblib.load(VOLTAGE_MODEL_PATH)
+        model_bill = joblib.load(BILL_MODEL_PATH)
+        return model_voltage, model_bill
+    except FileNotFoundError:
+        st.warning("⚠ Models not found. Running in demo mode.")
+        return None, None
 
 
 model_voltage, model_bill = load_models()
+if model_voltage is None or model_bill is None:
+    st.info("Demo mode — predictions unavailable on cloud.")
 
 # ================= MAIN APP =================
 st.title("🏠 SmartBill Electricity Predictor")
