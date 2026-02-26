@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 
 # ================= PAGE CONFIG =================
 st.set_page_config(
@@ -12,19 +13,18 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("""
+# Dark Mode Support
+dark_mode = st.sidebar.checkbox("🌙 Dark Mode")
+if dark_mode:
+    st.markdown("""
     <style>
+        body { background-color: #0e1117; color: white; }
         .stButton>button {
-            width: 100%;
-            height: 3em;
-            font-size: 18px;
-            border-radius: 10px;
-        }
-        .stTextInput>div>div>input {
-            border-radius: 8px;
+            background-color: #1e88e5;
+            color: white;
         }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # ================= CONFIG =================
 DB_PATH = "users.db"
@@ -88,25 +88,24 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = None
-if "last_prediction" not in st.session_state:
-    st.session_state.last_prediction = None
+if "history" not in st.session_state:
+    st.session_state.history = []
 
 
 def logout():
     st.session_state.logged_in = False
     st.session_state.username = None
-    st.session_state.last_prediction = None
+    st.session_state.history = []
 
 
 # ================= AUTH =================
 st.sidebar.title("🔐 Authentication")
-
 auth_mode = st.sidebar.radio("Select", ["Login", "Sign up"])
 
 if not st.session_state.logged_in:
 
-    st.title("⚡ Welcome to SmartBill")
-    st.info("Please login or create an account to continue.")
+    st.title("⚡ SmartBill")
+    st.info("Login to continue.")
 
     if auth_mode == "Sign up":
         new_user = st.text_input("Create Username")
@@ -148,14 +147,13 @@ def load_models():
         model_voltage = joblib.load(VOLTAGE_MODEL_PATH)
         model_bill = joblib.load(BILL_MODEL_PATH)
         return model_voltage, model_bill
-    except FileNotFoundError:
-        st.warning("⚠ Models not found. Running in demo mode.")
+    except Exception:
+        st.warning("⚠ Models not available. Prediction disabled.")
         return None, None
 
 
 model_voltage, model_bill = load_models()
-if model_voltage is None or model_bill is None:
-    st.info("Demo mode — predictions unavailable on cloud.")
+
 
 # ================= MAIN APP =================
 st.title("🏠 SmartBill Electricity Predictor")
@@ -189,6 +187,7 @@ with col4:
 with col5:
     rooms = st.number_input("Rooms", 1, 12, 3)
 
+
 # ================= PREDICTION =================
 if st.button("⚡ Predict Electricity Bill", type="primary"):
 
@@ -206,44 +205,65 @@ if st.button("⚡ Predict Electricity Bill", type="primary"):
         "num_rooms": [rooms],
     })
 
-    voltage = model_voltage.predict(data)[0]
-    bill = model_bill.predict(data)[0]
+    try:
+        if model_voltage is None or model_bill is None:
+            st.warning("Prediction not available on cloud.")
+            st.stop()
 
-    st.session_state.last_prediction = {
-        "voltage": float(voltage),
-        "bill": float(bill),
-    }
+        if data.isnull().values.any():
+            st.error("Invalid input data")
+            st.stop()
 
-    # 🎈 Celebration
-    st.balloons()
-    st.success("Prediction generated successfully!")
+        voltage = model_voltage.predict(data)[0]
+        bill = model_bill.predict(data)[0]
 
-    colA, colB = st.columns(2)
+        st.session_state.history.append({
+            "voltage": float(voltage),
+            "bill": float(bill)
+        })
 
-    with colA:
-        st.metric("⚡ Predicted Voltage", f"{voltage:.1f} V")
+        st.balloons()
+        st.success("Prediction completed!")
 
-    with colB:
-        st.metric("💰 Estimated Monthly Bill", f"₹{bill:.0f}")
+        colA, colB = st.columns(2)
 
-    kwh = bill / 7
-    st.info(f"📊 Estimated Usage: {kwh:.0f} kWh/month")
+        with colA:
+            st.metric("⚡ Voltage", f"{voltage:.1f} V")
 
-    if bill > 3000:
-        st.warning("⚠ High electricity usage detected!")
-    else:
-        st.success("✅ Electricity usage within normal range.")
+        with colB:
+            st.metric("💰 Monthly Bill", f"₹{bill:.0f}")
 
-# ================= SIDEBAR SUMMARY =================
-if st.session_state.last_prediction:
+        usage = bill / 7
+        st.info(f"📊 Usage: {usage:.0f} kWh/month")
+
+        category = "High Usage ⚠" if bill > 3000 else "Medium Usage" if bill > 1500 else "Low Usage ✅"
+        st.info(f"Usage Category: {category}")
+
+        # Chart
+        fig = plt.figure()
+        plt.bar(["Bill"], [bill])
+        st.pyplot(fig)
+
+        # Download report
+        report = f"""
+        Voltage: {voltage:.1f} V
+        Bill: ₹{bill:.0f}
+        Usage: {usage:.0f} kWh
+        """
+        st.download_button("Download Report", report, "SmartBill_Report.txt")
+
+    except Exception as e:
+        st.error(f"Prediction error: {e}")
+
+
+# ================= SIDEBAR HISTORY =================
+if st.session_state.history:
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📊 Last Prediction")
-    st.sidebar.write(
-        f"Voltage: {st.session_state.last_prediction['voltage']:.1f} V"
-    )
-    st.sidebar.write(
-        f"Bill: ₹{st.session_state.last_prediction['bill']:.0f}"
-    )
+    st.sidebar.subheader("📜 History")
+
+    for item in st.session_state.history[-5:]:
+        st.sidebar.write(f"⚡ {item['voltage']:.1f} V | ₹{item['bill']:.0f}")
+
 
 st.markdown("---")
 st.caption("SmartBill • ML Powered Electricity Forecasting System")
